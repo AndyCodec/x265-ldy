@@ -164,7 +164,7 @@ void CLIOptions::printStatus(uint32_t frameNum)
     else
         sprintf(buf, "x265 %d frames: %.2f fps, %.2f kb/s", frameNum, fps, bitrate);
 
-    fprintf(stderr, "%s  \r", buf + 5);
+    fprintf(stderr, "%s  \n", buf + 5);
     SetConsoleTitle(buf);
     fflush(stderr); // needed in windows
     prevUpdateTime = time;

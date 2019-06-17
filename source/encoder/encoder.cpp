@@ -1936,7 +1936,13 @@ void Encoder::printSummary()
         if (m_param->bEnablePsnr)
         {
             double globalPsnr = (m_analyzeAll.m_psnrSumY * 6 + m_analyzeAll.m_psnrSumU + m_analyzeAll.m_psnrSumV) / (8 * m_analyzeAll.m_numPics);
-            p += sprintf(buffer + p, ", Global PSNR: %.3f", globalPsnr);
+            //p += sprintf(buffer + p, ", Global PSNR: %.3f", globalPsnr);
+            double psnrY = (m_analyzeAll.m_psnrSumY) / (m_analyzeAll.m_numPics);
+            double psnrU = (m_analyzeAll.m_psnrSumU) / (m_analyzeAll.m_numPics);
+            double psnrV = (m_analyzeAll.m_psnrSumV) / (m_analyzeAll.m_numPics);
+
+            p += sprintf(buffer + p, "\nBitrate: %.2f    PSNR G Y U V: %.3f %.3f %.3f %.3f    AvgQp: %2.2lf\n",
+                bitrate, psnrY, psnrU, psnrV, globalPsnr, m_analyzeAll.m_totalQp / (double)m_analyzeAll.m_numPics);
         }
 
         if (m_param->bEnableSsim)
