@@ -1334,7 +1334,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
             rce->frameSizeMaximum *= m_param->maxAUSizeFactor;
         }
     }
-    if (!m_isAbr && m_2pass && m_param->rc.rateControlMode == X265_RC_CRF)
+    if (!m_isAbr && m_2pass && m_param->rc.rateControlMode == X265_RC_CRF)//如果是 2pass && CRF 
     {
         rce->qpPrev = x265_qScale2qp(rce->qScale);
         rce->qScale = rce->newQScale;
@@ -1378,7 +1378,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
          * switch until the next mini-gop to ensure a min qp for all the frames within 
          * the scene-transition mini-gop */
 
-        double q = x265_qScale2qp(rateEstimateQscale(curFrame, rce));
+        double q = x265_qScale2qp(rateEstimateQscale(curFrame, rce)); //基于ABR计算QP
         q = x265_clip3((double)m_param->rc.qpMin, (double)m_param->rc.qpMax, q);
         m_qp = int(q + 0.5);
         q = m_isGrainEnabled ? m_qp : q;
@@ -1667,7 +1667,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
 
     if (m_2pass)
     {
-        if (m_sliceType != rce->sliceType)
+        if (m_sliceType != rce->sliceType) //若为2 pass判断上一pass的sliceType和当前sliceType是否一致，否则报错
         {
             x265_log(m_param, X265_LOG_ERROR, "slice=%c but 2pass stats say %c\n",
                      g_sliceTypeToChar[m_sliceType], g_sliceTypeToChar[rce->sliceType]);
@@ -1703,23 +1703,23 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         }
     }
 
-    if (m_sliceType == B_SLICE)
+    if (m_sliceType == B_SLICE)//B帧没有独立的码控，只能通过相邻的两个P帧QP的平均值 + offset所得
     {
         /* B-frames don't have independent rate control, but rather get the
          * average QP of the two adjacent P-frames + an offset */
-        Slice* prevRefSlice = m_curSlice->m_refFrameList[0][0]->m_encData->m_slice;
-        Slice* nextRefSlice = m_curSlice->m_refFrameList[1][0]->m_encData->m_slice;
-        double q0 = m_curSlice->m_refFrameList[0][0]->m_encData->m_avgQpRc;
-        double q1 = m_curSlice->m_refFrameList[1][0]->m_encData->m_avgQpRc;
+        Slice* prevRefSlice = m_curSlice->m_refFrameList[0][0]->m_encData->m_slice; //获取前向帧slice
+        Slice* nextRefSlice = m_curSlice->m_refFrameList[1][0]->m_encData->m_slice; //获取后向帧slice
+        double q0 = m_curSlice->m_refFrameList[0][0]->m_encData->m_avgQpRc; //获取前向参考帧的平均QP
+        double q1 = m_curSlice->m_refFrameList[1][0]->m_encData->m_avgQpRc; //获取后向参考帧的平均QP
         bool i0 = prevRefSlice->m_sliceType == I_SLICE;
         bool i1 = nextRefSlice->m_sliceType == I_SLICE;
-        int dt0 = abs(m_curSlice->m_poc - prevRefSlice->m_poc);
-        int dt1 = abs(m_curSlice->m_poc - nextRefSlice->m_poc);
+        int dt0 = abs(m_curSlice->m_poc - prevRefSlice->m_poc);   //获取当前编码帧与前向参考帧的距离
+        int dt1 = abs(m_curSlice->m_poc - nextRefSlice->m_poc);   //获取当前编码帧与后向参考帧的距离
 
         // Skip taking a reference frame before the Scenecut if ABR has been reset.
-        if (m_lastAbrResetPoc >= 0)
+        if (m_lastAbrResetPoc >= 0) //如果前面有非B帧 ABR进行重置
         {
-            if (prevRefSlice->m_sliceType == P_SLICE && prevRefSlice->m_poc < m_lastAbrResetPoc)
+            if (prevRefSlice->m_sliceType == P_SLICE && prevRefSlice->m_poc < m_lastAbrResetPoc) //如果前向帧为P帧  并且  前向帧在重置位置之前
             {
                 i0 = i1;
                 dt0 = dt1;
@@ -1727,36 +1727,36 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             }
         }
 
-        if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
-            q0 -= m_pbOffset / 2;
-        if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
+        if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0])) //如果前向帧为B帧  并且  前向参考帧为可参考B帧
+            q0 -= m_pbOffset / 2; //修正前向参考帧的平均QP
+        if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0])) //如果后向帧为B帧  并且  后向参考帧为可参考B帧
             q1 -= m_pbOffset / 2;
-        if (i0 && i1)
-            q = (q0 + q1) / 2 + m_ipOffset;
-        else if (i0)
+        if (i0 && i1) //如果前向和后向参考帧都为I帧
+            q = (q0 + q1) / 2 + m_ipOffset; //获取当前预估QP值：其平均值
+        else if (i0) //如果前向参考帧为I帧
             q = q1;
         else if (i1)
             q = q0;
         else if(m_isGrainEnabled && !m_2pass)
                 q = q1;
             else
-            q = (q0 * dt1 + q1 * dt0) / (dt0 + dt1);
+            q = (q0 * dt1 + q1 * dt0) / (dt0 + dt1); //获取按距离加权的平均QP值
 
-        if (IS_REFERENCED(curFrame))
-            q += m_pbOffset / 2;
+        if (IS_REFERENCED(curFrame)) //如果当前帧为可参考帧
+            q += m_pbOffset / 2; //QP增加一半PBoffset
         else
-            q += m_pbOffset;
+            q += m_pbOffset; //QP增加PBoffset
 
                 /* Set a min qp at scenechanges and transitions */
-        if (m_isSceneTransition)
+        if (m_isSceneTransition)//如果当前帧是场景切换帧
         {
-            q = X265_MAX(ABR_SCENECUT_INIT_QP_MIN, q);
-            double minScenecutQscale =x265_qp2qScale(ABR_SCENECUT_INIT_QP_MIN); 
-            m_lastQScaleFor[P_SLICE] = X265_MAX(minScenecutQscale, m_lastQScaleFor[P_SLICE]);
+            q = X265_MAX(ABR_SCENECUT_INIT_QP_MIN, q); //取最大QP
+            double minScenecutQscale =x265_qp2qScale(ABR_SCENECUT_INIT_QP_MIN); //获取最小Qscale值
+            m_lastQScaleFor[P_SLICE] = X265_MAX(minScenecutQscale, m_lastQScaleFor[P_SLICE]); //更新P帧最新qscale值
         }
-        double qScale = x265_qp2qScale(q);
-        rce->qpNoVbv = q;
-        double lmin = 0, lmax = 0;
+        double qScale = x265_qp2qScale(q); //获取当前预估的qscale值
+        rce->qpNoVbv = q; //获取未经VBV修正的qp参数
+        double lmin = 0, lmax = 0; //暂存最大 和最小qscale值
         if (m_isGrainEnabled && m_isFirstMiniGop)
         {
             lmin = m_lastQScaleFor[P_SLICE] / m_lstep;
@@ -1773,26 +1773,26 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             }
             rce->qpNoVbv = q;
         }
-        if (m_isVbv)
+        if (m_isVbv)//如果应用VBV
         {
             lmin = m_lastQScaleFor[P_SLICE] / m_lstep;
             lmax = m_lastQScaleFor[P_SLICE] * m_lstep;
 
-            if (m_isCbr && !m_isGrainEnabled)
+            if (m_isCbr && !m_isGrainEnabled) //如果为CBR
             {
-                qScale = tuneAbrQScaleFromFeedback(qScale);
+                qScale = tuneAbrQScaleFromFeedback(qScale); //根据当前已编码bits数目修正预估的qscale值并计算overflow值（qScale *= overflow）
                 if (!m_isAbrReset)
                     qScale = x265_clip3(lmin, lmax, qScale);
-                q = x265_qScale2qp(qScale);
+                q = x265_qScale2qp(qScale); //获取qp量化参数
             }
-            if (!m_2pass)
+            if (!m_2pass)//如果不是2pass
             {
-                qScale = clipQscale(curFrame, rce, qScale);
+                qScale = clipQscale(curFrame, rce, qScale); //根据下采样SATD信息修正qscale值
                 /* clip qp to permissible range after vbv-lookahead estimation to avoid possible 
                  * mispredictions by initial frame size predictors */
                 if (m_pred[m_predType].count == 1)
                     qScale = x265_clip3(lmin, lmax, qScale);
-                m_lastQScaleFor[m_sliceType] = qScale;
+                m_lastQScaleFor[m_sliceType] = qScale; //获取最新的qscale值
             }
         }
 
@@ -1818,8 +1818,12 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         }
         return qScale;
     }
-    else
+    else //如果当前为I帧或者P帧
     {
+        //功能：获取当前帧预估bits 返回预估当前帧的qscale值
+        //    1. 如果当前是2pass：？？？
+        //       否则如果当前不是2pass：预估当前帧的qscale值 并 根据下采样SATD信息修正qscale值（仅限VBV模式）
+        //    2. 获取当前帧预估bits 返回预估当前帧的qscale值
         double abrBuffer = 2 * m_rateTolerance * m_bitrate;
         if (m_2pass)
         {
