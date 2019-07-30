@@ -74,12 +74,17 @@ bool Predict::allocBuffers(int csp)
     return m_predShortYuv[0].create(MAX_CU_SIZE, csp) && m_predShortYuv[1].create(MAX_CU_SIZE, csp);
 }
 
+/*
+* MC:计算当前PU的预测值，存储在predYUV中
+* cu中包含参考帧ref信息及mv信息
+* bLuma及bChroma用来标志是否计算亮度/色度预测值
+*/
 void Predict::motionCompensation(const CUData& cu, const PredictionUnit& pu, Yuv& predYuv, bool bLuma, bool bChroma)
 {
     int refIdx0 = cu.m_refIdx[0][pu.puAbsPartIdx];
     int refIdx1 = cu.m_refIdx[1][pu.puAbsPartIdx];
 
-    if (cu.m_slice->isInterP())
+    if (cu.m_slice->isInterP())//P帧预测
     {
         /* P Slice */
         WeightValues wv0[3];
@@ -88,10 +93,10 @@ void Predict::motionCompensation(const CUData& cu, const PredictionUnit& pu, Yuv
         X265_CHECK(refIdx0 < cu.m_slice->m_numRefIdx[0], "P refidx out of range\n");
         const WeightParam *wp0 = cu.m_slice->m_weightPredTable[0][refIdx0];
 
-        MV mv0 = cu.m_mv[0][pu.puAbsPartIdx];
-        cu.clipMv(mv0);
+        MV mv0 = cu.m_mv[0][pu.puAbsPartIdx]; //获取对应的mv
+        cu.clipMv(mv0); //确保mv在合理范围内
 
-        if (cu.m_slice->m_pps->bUseWeightPred && wp0->wtPresent)
+        if (cu.m_slice->m_pps->bUseWeightPred && wp0->wtPresent)//使用加权预测
         {
             for (int plane = 0; plane < (bChroma ? 3 : 1); plane++)
             {
@@ -110,15 +115,15 @@ void Predict::motionCompensation(const CUData& cu, const PredictionUnit& pu, Yuv
 
             addWeightUni(pu, predYuv, shortYuv, wv0, bLuma, bChroma);
         }
-        else
+        else //常规预测，主要关注这里
         {
             if (bLuma)
-                predInterLumaPixel(pu, predYuv, *cu.m_slice->m_refReconPicList[0][refIdx0], mv0);
+                predInterLumaPixel(pu, predYuv, *cu.m_slice->m_refReconPicList[0][refIdx0], mv0); //Luma预测，主要关注这里
             if (bChroma)
                 predInterChromaPixel(pu, predYuv, *cu.m_slice->m_refReconPicList[0][refIdx0], mv0);
         }
     }
-    else
+    else //B帧预测，与P帧类似，不再赘述
     {
         /* B Slice */
 

@@ -152,19 +152,19 @@ void CLIOptions::printStatus(uint32_t frameNum)
         return;
 
     int64_t elapsed = time - startTime;
-    double fps = elapsed > 0 ? frameNum * 1000000. / elapsed : 0;
-    float bitrate = 0.008f * totalbytes * (param->fpsNum / param->fpsDenom) / ((float)frameNum);
-    if (framesToBeEncoded)
-    {
-        int eta = (int)(elapsed * (framesToBeEncoded - frameNum) / ((int64_t)frameNum * 1000000));
-        sprintf(buf, "x265 [%.1f%%] %d/%d frames, %.2f fps, %.2f kb/s, eta %d:%02d:%02d",
-            100. * frameNum / (param->chunkEnd ? param->chunkEnd : param->totalFrames), frameNum, (param->chunkEnd ? param->chunkEnd : param->totalFrames), fps, bitrate,
-                eta / 3600, (eta / 60) % 60, eta % 60);
-    }
-    else
-        sprintf(buf, "x265 %d frames: %.2f fps, %.2f kb/s", frameNum, fps, bitrate);
+	double fps = elapsed > 0 ? frameNum * 1000000. / elapsed : 0;
+	float bitrate = 0.008f * totalbytes * (param->fpsNum / param->fpsDenom) / ((float)frameNum);
+	if (framesToBeEncoded)
+	{
+		int eta = (int)(elapsed * (framesToBeEncoded - frameNum) / ((int64_t)frameNum * 1000000));
+		sprintf(buf, "x265 [%.1f%%] %d/%d frames, %.2f fps, %.2f kb/s, eta %d:%02d:%02d",
+			100. * frameNum / (param->chunkEnd ? param->chunkEnd : param->totalFrames), frameNum, (param->chunkEnd ? param->chunkEnd : param->totalFrames), fps, bitrate,
+			eta / 3600, (eta / 60) % 60, eta % 60);
+	}
+	else
+		sprintf(buf, "x265 %d frames: %.2f fps, %.2f kb/s", frameNum, fps, bitrate);
 
-    fprintf(stderr, "%s  \n", buf + 5);
+	fprintf(stderr, "%s  \n", buf + 5);
     SetConsoleTitle(buf);
     fflush(stderr); // needed in windows
     prevUpdateTime = time;

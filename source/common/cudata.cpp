@@ -1462,7 +1462,7 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
 
     const uint32_t maxNumMergeCand = m_slice->m_maxNumMergeCand;
 
-    for (uint32_t i = 0; i < maxNumMergeCand; ++i)
+    for (uint32_t i = 0; i < maxNumMergeCand; ++i) //初始化
     {
         candMvField[i][0].mv = 0;
         candMvField[i][1].mv = 0;
@@ -1471,20 +1471,21 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
     }
 
     /* calculate the location of upper-left corner pixel and size of the current PU */
-    int xP, yP, nPSW, nPSH;
+    int xP, yP, nPSW, nPSH; //计算当前PU左上角像素的坐标(xP, yP)(该坐标指位于CU内的坐标),及当前PU的size，比如16x8
 
     int cuSize = 1 << m_log2CUSize[0];
     int partMode = m_partSize[0];
 
-    int tmp = partTable[partMode][puIdx][0];
+	//partTable:PU划分列表，三维数组，分别是[模式，共8种][PU index，1-4种][size/offsets]
+    int tmp = partTable[partMode][puIdx][0];//tmp存储当前PU的size信息
     nPSW = ((tmp >> 4) * cuSize) >> 2;
     nPSH = ((tmp & 0xF) * cuSize) >> 2;
 
-    tmp = partTable[partMode][puIdx][1];
+    tmp = partTable[partMode][puIdx][1]; //tmp存储当前PU的坐标信息
     xP = ((tmp >> 4) * cuSize) >> 2;
     yP = ((tmp & 0xF) * cuSize) >> 2;
 
-    uint32_t count = 0;
+    uint32_t count = 0; //记录已得到的mvp数目，达到maxNumMergeCand时返回
 
     uint32_t partIdxLT, partIdxRT, partIdxLB = deriveLeftBottomIdx(puIdx);
     PartSize curPS = (PartSize)m_partSize[absPartIdx];
@@ -1496,14 +1497,14 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
         cuLeft->isDiffMER(xP - 1, yP + nPSH - 1, xP, yP) &&
         !(puIdx == 1 && (curPS == SIZE_Nx2N || curPS == SIZE_nLx2N || curPS == SIZE_nRx2N)) &&
         cuLeft->isInter(leftPartIdx);
-    if (isAvailableA1)
+    if (isAvailableA1) //左候选A1
     {
         // get Inter Dir
-        candDir[count] = cuLeft->m_interDir[leftPartIdx];
+        candDir[count] = cuLeft->m_interDir[leftPartIdx]; //Inter direction 是什么鬼？
         // get Mv from Left
-        cuLeft->getMvField(cuLeft, leftPartIdx, 0, candMvField[count][0]);
+        cuLeft->getMvField(cuLeft, leftPartIdx, 0, candMvField[count][0]); //获取mv
         if (isInterB)
-            cuLeft->getMvField(cuLeft, leftPartIdx, 1, candMvField[count][1]);
+            cuLeft->getMvField(cuLeft, leftPartIdx, 1, candMvField[count][1]); //B帧参考
 
         if (++count == maxNumMergeCand)
             return maxNumMergeCand;
@@ -1518,7 +1519,7 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
         cuAbove->isDiffMER(xP + nPSW - 1, yP - 1, xP, yP) &&
         !(puIdx == 1 && (curPS == SIZE_2NxN || curPS == SIZE_2NxnU || curPS == SIZE_2NxnD)) &&
         cuAbove->isInter(abovePartIdx);
-    if (isAvailableB1 && (!isAvailableA1 || !cuLeft->hasEqualMotion(leftPartIdx, *cuAbove, abovePartIdx)))
+    if (isAvailableB1 && (!isAvailableA1 || !cuLeft->hasEqualMotion(leftPartIdx, *cuAbove, abovePartIdx))) //上候选B1，需判断B1！= A1，避免重复计算
     {
         // get Inter Dir
         candDir[count] = cuAbove->m_interDir[abovePartIdx];
@@ -1537,7 +1538,7 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
     bool isAvailableB0 = cuAboveRight &&
         cuAboveRight->isDiffMER(xP + nPSW, yP - 1, xP, yP) &&
         cuAboveRight->isInter(aboveRightPartIdx);
-    if (isAvailableB0 && (!isAvailableB1 || !cuAbove->hasEqualMotion(abovePartIdx, *cuAboveRight, aboveRightPartIdx)))
+    if (isAvailableB0 && (!isAvailableB1 || !cuAbove->hasEqualMotion(abovePartIdx, *cuAboveRight, aboveRightPartIdx)))//右上B0
     {
         // get Inter Dir
         candDir[count] = cuAboveRight->m_interDir[aboveRightPartIdx];
@@ -1556,7 +1557,7 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
     bool isAvailableA0 = cuLeftBottom &&
         cuLeftBottom->isDiffMER(xP - 1, yP + nPSH, xP, yP) &&
         cuLeftBottom->isInter(leftBottomPartIdx);
-    if (isAvailableA0 && (!isAvailableA1 || !cuLeft->hasEqualMotion(leftPartIdx, *cuLeftBottom, leftBottomPartIdx)))
+    if (isAvailableA0 && (!isAvailableA1 || !cuLeft->hasEqualMotion(leftPartIdx, *cuLeftBottom, leftBottomPartIdx))) //右下A0
     {
         // get Inter Dir
         candDir[count] = cuLeftBottom->m_interDir[leftBottomPartIdx];
@@ -1570,7 +1571,7 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
     }
 
     // above left
-    if (count < 4)
+    if (count < 4) //运行至此，count数目小于4，从左上块B2中获取mv
     {
         uint32_t aboveLeftPartIdx = 0;
         const CUData* cuAboveLeft = getPUAboveLeft(aboveLeftPartIdx, absPartAddr);
@@ -1578,7 +1579,7 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
             cuAboveLeft->isDiffMER(xP - 1, yP - 1, xP, yP) &&
             cuAboveLeft->isInter(aboveLeftPartIdx);
         if (isAvailableB2 && (!isAvailableA1 || !cuLeft->hasEqualMotion(leftPartIdx, *cuAboveLeft, aboveLeftPartIdx))
-            && (!isAvailableB1 || !cuAbove->hasEqualMotion(abovePartIdx, *cuAboveLeft, aboveLeftPartIdx)))
+            && (!isAvailableB1 || !cuAbove->hasEqualMotion(abovePartIdx, *cuAboveLeft, aboveLeftPartIdx))) //左上B2
         {
             // get Inter Dir
             candDir[count] = cuAboveLeft->m_interDir[aboveLeftPartIdx];
@@ -1591,13 +1592,13 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
                 return maxNumMergeCand;
         }
     }
-    if (m_slice->m_sps->bTemporalMVPEnabled)
+    if (m_slice->m_sps->bTemporalMVPEnabled) //允许使用时域mvp
     {
         uint32_t partIdxRB = deriveRightBottomIdx(puIdx);
         MV colmv;
         int ctuIdx = -1;
 
-        // image boundary check
+        // image boundary check //边界检测
         if (m_encData->getPicCTU(m_cuAddr)->m_cuPelX + g_zscanToPelX[partIdxRB] + UNIT_SIZE < m_slice->m_sps->picWidthInLumaSamples &&
             m_encData->getPicCTU(m_cuAddr)->m_cuPelY + g_zscanToPelY[partIdxRB] + UNIT_SIZE < m_slice->m_sps->picHeightInLumaSamples)
         {
@@ -1622,17 +1623,17 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
                 absPartAddr = 0;
         }
 
-        int maxList = isInterB ? 2 : 1;
+        int maxList = isInterB ? 2 : 1; //B帧
         int dir = 0, refIdx = 0;
-        for (int list = 0; list < maxList; list++)
+        for (int list = 0; list < maxList; list++) //检查从T_BR到T_CT第一个可用的mv
         {
-            bool bExistMV = ctuIdx >= 0 && getColMVP(colmv, refIdx, list, ctuIdx, absPartAddr);
+            bool bExistMV = ctuIdx >= 0 && getColMVP(colmv, refIdx, list, ctuIdx, absPartAddr); //T_BR
             if (!bExistMV)
             {
                 uint32_t partIdxCenter = deriveCenterIdx(puIdx);
-                bExistMV = getColMVP(colmv, refIdx, list, m_cuAddr, partIdxCenter);
+                bExistMV = getColMVP(colmv, refIdx, list, m_cuAddr, partIdxCenter); //T_CT
             }
-            if (bExistMV)
+            if (bExistMV) //若mv可用，存储数据到candMvField
             {
                 dir |= (1 << list);
                 candMvField[count][list].mv = colmv;
@@ -1649,7 +1650,7 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
         }
     }
 
-    if (isInterB)
+    if (isInterB)//B帧
     {
         const uint32_t cutoff = count * (count - 1);
         uint32_t priorityList0 = 0xEDC984; // { 0, 1, 0, 2, 1, 2, 0, 3, 1, 3, 2, 3 }
@@ -1684,7 +1685,7 @@ uint32_t CUData::getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MV
     int numRefIdx = (isInterB) ? X265_MIN(m_slice->m_numRefIdx[0], m_slice->m_numRefIdx[1]) : m_slice->m_numRefIdx[0];
     int r = 0;
     int refcnt = 0;
-    while (count < maxNumMergeCand)
+    while (count < maxNumMergeCand)//运行至此，count数依然小于maxNumMergeCand，使用参考帧列表中的同位块？
     {
         candDir[count] = 1;
         candMvField[count][0].mv.word = 0;

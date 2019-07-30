@@ -2687,43 +2687,44 @@ void Search::encodeResAndCalcRdSkipCU(Mode& interMode)
     X265_CHECK(!cu.isIntra(0), "intra CU not expected\n");
     uint32_t depth  = cu.m_cuDepth[0];
 
-    // No residual coding : SKIP mode
+    // No residual coding : SKIP mode //--无残差编码，不用处理残差信息
 
-    cu.setPredModeSubParts(MODE_SKIP);
+    cu.setPredModeSubParts(MODE_SKIP);//数据初始化
     cu.clearCbf();
     cu.setTUDepthSubParts(0, 0, depth);
 
-    reconYuv->copyFromYuv(interMode.predYuv);
+    reconYuv->copyFromYuv(interMode.predYuv); //直接获得重建像素
 
     // Luma
     int part = partitionFromLog2Size(cu.m_log2CUSize[0]);
-    interMode.lumaDistortion = primitives.cu[part].sse_pp(fencYuv->m_buf[0], fencYuv->m_size, reconYuv->m_buf[0], reconYuv->m_size);
+    interMode.lumaDistortion = primitives.cu[part].sse_pp(fencYuv->m_buf[0], fencYuv->m_size, reconYuv->m_buf[0], reconYuv->m_size); //直接计算失真sse
     interMode.distortion = interMode.lumaDistortion;
     // Chroma
     if (m_csp != X265_CSP_I400 && m_frame->m_fencPic->m_picCsp != X265_CSP_I400)
     {
-        interMode.chromaDistortion = m_rdCost.scaleChromaDist(1, primitives.chroma[m_csp].cu[part].sse_pp(fencYuv->m_buf[1], fencYuv->m_csize, reconYuv->m_buf[1], reconYuv->m_csize));
+        //chroma数据会有一个scale weight，具体情况后续分析
+		interMode.chromaDistortion = m_rdCost.scaleChromaDist(1, primitives.chroma[m_csp].cu[part].sse_pp(fencYuv->m_buf[1], fencYuv->m_csize, reconYuv->m_buf[1], reconYuv->m_csize));
         interMode.chromaDistortion += m_rdCost.scaleChromaDist(2, primitives.chroma[m_csp].cu[part].sse_pp(fencYuv->m_buf[2], fencYuv->m_csize, reconYuv->m_buf[2], reconYuv->m_csize));
         interMode.distortion += interMode.chromaDistortion;
     }
     cu.m_distortion[0] = interMode.distortion;
-    m_entropyCoder.load(m_rqt[depth].cur);
-    m_entropyCoder.resetBits();
+    m_entropyCoder.load(m_rqt[depth].cur); //加载当前cu的Entropy
+    m_entropyCoder.resetBits();//重置bits
     if (m_slice->m_pps->bTransquantBypassEnabled)
-        m_entropyCoder.codeCUTransquantBypassFlag(cu.m_tqBypass[0]);
-    m_entropyCoder.codeSkipFlag(cu, 0);
+        m_entropyCoder.codeCUTransquantBypassFlag(cu.m_tqBypass[0]); //编码cu_transquant_bypass_flag标志位所需的bits
+    m_entropyCoder.codeSkipFlag(cu, 0);//编码skip flag所需的bits
     int skipFlagBits = m_entropyCoder.getNumberOfWrittenBits();
-    m_entropyCoder.codeMergeIndex(cu, 0);
+    m_entropyCoder.codeMergeIndex(cu, 0); //编码merge index
     interMode.mvBits = m_entropyCoder.getNumberOfWrittenBits() - skipFlagBits;
-    interMode.coeffBits = 0;
-    interMode.totalBits = interMode.mvBits + skipFlagBits;
+    interMode.coeffBits = 0; //skip模式，无残差信息
+    interMode.totalBits = interMode.mvBits + skipFlagBits; //totalBits仅包括两部分：mvBits + skipFlagBits
     if (m_rdCost.m_psyRd)
         interMode.psyEnergy = m_rdCost.psyCost(part, fencYuv->m_buf[0], fencYuv->m_size, reconYuv->m_buf[0], reconYuv->m_size);
     else if(m_rdCost.m_ssimRd)
         interMode.ssimEnergy = m_quant.ssimDistortion(cu, fencYuv->m_buf[0], fencYuv->m_size, reconYuv->m_buf[0], reconYuv->m_size, cu.m_log2CUSize[0], TEXT_LUMA, 0);
 
     interMode.resEnergy = primitives.cu[part].sse_pp(fencYuv->m_buf[0], fencYuv->m_size, predYuv->m_buf[0], predYuv->m_size);
-    updateModeCost(interMode);
+    updateModeCost(interMode); //更新interMode的rdcost信息
     m_entropyCoder.store(interMode.contexts);
 }
 
@@ -2745,12 +2746,12 @@ void Search::encodeResAndCalcRdInterCU(Mode& interMode, const CUGeom& cuGeom)
     uint32_t log2CUSize = cuGeom.log2CUSize;
     int sizeIdx = log2CUSize - 2;
 
-    resiYuv->subtract(*fencYuv, *predYuv, log2CUSize, m_frame->m_fencPic->m_picCsp);
+    resiYuv->subtract(*fencYuv, *predYuv, log2CUSize, m_frame->m_fencPic->m_picCsp); //计算残差
 
     uint32_t tuDepthRange[2];
-    cu.getInterTUQtDepthRange(tuDepthRange, 0);
+    cu.getInterTUQtDepthRange(tuDepthRange, 0); //设置TU的qt深度范围
 
-    m_entropyCoder.load(m_rqt[depth].cur);
+    m_entropyCoder.load(m_rqt[depth].cur); //加载Entropy
 
     if ((m_limitTU & X265_TU_LIMIT_DFS) && !(m_limitTU & X265_TU_LIMIT_NEIGH))
         m_maxTUDepth = -1;
@@ -2758,7 +2759,7 @@ void Search::encodeResAndCalcRdInterCU(Mode& interMode, const CUGeom& cuGeom)
         memset(&m_cacheTU, 0, sizeof(TUInfoCache));
 
     Cost costs;
-    if (m_limitTU & X265_TU_LIMIT_NEIGH)
+    if (m_limitTU & X265_TU_LIMIT_NEIGH)//m_limitTU???
     {
         /* Save and reload maxTUDepth to avoid changing of maxTUDepth between modes */
         int32_t tempDepth = m_maxTUDepth;
@@ -2774,19 +2775,19 @@ void Search::encodeResAndCalcRdInterCU(Mode& interMode, const CUGeom& cuGeom)
         m_maxTUDepth = tempDepth;
     }
     else
-        estimateResidualQT(interMode, cuGeom, 0, 0, *resiYuv, costs, tuDepthRange);
+        estimateResidualQT(interMode, cuGeom, 0, 0, *resiYuv, costs, tuDepthRange); //核心，重点关注
 
     uint32_t tqBypass = cu.m_tqBypass[0];
     if (!tqBypass)
     {
-        sse_t cbf0Dist = primitives.cu[sizeIdx].sse_pp(fencYuv->m_buf[0], fencYuv->m_size, predYuv->m_buf[0], predYuv->m_size);
+        sse_t cbf0Dist = primitives.cu[sizeIdx].sse_pp(fencYuv->m_buf[0], fencYuv->m_size, predYuv->m_buf[0], predYuv->m_size); //计算cbf0的distortion
         if (m_csp != X265_CSP_I400 && m_frame->m_fencPic->m_picCsp != X265_CSP_I400)
         {
             cbf0Dist += m_rdCost.scaleChromaDist(1, primitives.chroma[m_csp].cu[sizeIdx].sse_pp(fencYuv->m_buf[1], predYuv->m_csize, predYuv->m_buf[1], predYuv->m_csize));
             cbf0Dist += m_rdCost.scaleChromaDist(2, primitives.chroma[m_csp].cu[sizeIdx].sse_pp(fencYuv->m_buf[2], predYuv->m_csize, predYuv->m_buf[2], predYuv->m_csize));
         }
 
-        /* Consider the RD cost of not signaling any residual */
+        /* Consider the RD cost of not signaling any residual */ //考虑无残差编码的rdcost
         m_entropyCoder.load(m_rqt[depth].cur);
         m_entropyCoder.resetBits();
         m_entropyCoder.codeQtRootCbfZero();
@@ -2814,7 +2815,7 @@ void Search::encodeResAndCalcRdInterCU(Mode& interMode, const CUGeom& cuGeom)
     }
 
     if (cu.getQtRootCbf(0))
-        saveResidualQTData(cu, *resiYuv, 0, 0);
+        saveResidualQTData(cu, *resiYuv, 0, 0);//保存相关信息
 
     /* calculate signal bits for inter/merge/skip coded CU */
     m_entropyCoder.load(m_rqt[depth].cur);
@@ -2824,9 +2825,9 @@ void Search::encodeResAndCalcRdInterCU(Mode& interMode, const CUGeom& cuGeom)
         m_entropyCoder.codeCUTransquantBypassFlag(tqBypass);
 
     uint32_t coeffBits, bits, mvBits;
-    if (cu.m_mergeFlag[0] && cu.m_partSize[0] == SIZE_2Nx2N && !cu.getQtRootCbf(0))
+    if (cu.m_mergeFlag[0] && cu.m_partSize[0] == SIZE_2Nx2N && !cu.getQtRootCbf(0)) //2Nx2N的merge模式
     {
-        cu.setPredModeSubParts(MODE_SKIP);
+        cu.setPredModeSubParts(MODE_SKIP);//设置为skip模式
 
         /* Merge/Skip */
         coeffBits = mvBits = 0;

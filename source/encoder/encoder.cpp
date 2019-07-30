@@ -1876,7 +1876,7 @@ void Encoder::printSummary()
     if (m_param->logLevel < X265_LOG_INFO)
         return;
 
-    char buffer[200];
+    char buffer[300];
     if (m_analyzeI.m_numPics)
         x265_log(m_param, X265_LOG_INFO, "frame I: %s\n", statsString(m_analyzeI, buffer));
     if (m_analyzeP.m_numPics)
@@ -1941,8 +1941,9 @@ void Encoder::printSummary()
             double psnrU = (m_analyzeAll.m_psnrSumU) / (m_analyzeAll.m_numPics);
             double psnrV = (m_analyzeAll.m_psnrSumV) / (m_analyzeAll.m_numPics);
 
-            p += sprintf(buffer + p, "\nBitrate: %.2f    PSNR G Y U V: %.3f %.3f %.3f %.3f    AvgQp: %2.2lf\n",
-                bitrate, psnrY, psnrU, psnrV, globalPsnr, m_analyzeAll.m_totalQp / (double)m_analyzeAll.m_numPics);
+			p += sprintf(buffer + p, "\nBitrate: %.2f    PSNR Y U V G: %.3f %.3f %.3f %.3f    AvgQp: %2.2lf\n",
+				bitrate, psnrY, psnrU, psnrV, globalPsnr, m_analyzeAll.m_totalQp / (double)m_analyzeAll.m_numPics);
+			p += sprintf(buffer + p, "\nBitrate, PSNR Y U V, time: %.2f %.3f %.3f %.3f %.3f\n", bitrate, psnrY, psnrU, psnrV, elapsedEncodeTime);
         }
 
         if (m_param->bEnableSsim)

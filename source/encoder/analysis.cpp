@@ -1316,15 +1316,15 @@ SplitData Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom&
             if (mightSplit && depth >= minDepth && !skipRecursion)
             {
                 if (depth)
-                    skipRecursion = recursionDepthCheck(parentCTU, cuGeom, *md.bestMode);
+                    skipRecursion = recursionDepthCheck(parentCTU, cuGeom, *md.bestMode);//根据相邻块及已编码块的统计数据设定阈值判断 ---- 需测试性能
                 if (m_bHD && !skipRecursion && m_param->rdLevel == 2 && md.fencYuv.m_size != MAX_CU_SIZE)
-                    skipRecursion = complexityCheckCU(*md.bestMode);
+                    skipRecursion = complexityCheckCU(*md.bestMode);  //根据MAD值判断复杂度
             }
         }
         if (m_param->bAnalysisType == AVC_INFO && md.bestMode && cuGeom.numPartitions <= 16 && m_param->analysisReuseLevel == 7)
             skipRecursion = true;
         /* Step 2. Evaluate each of the 4 split sub-blocks in series */
-        if (mightSplit && !skipRecursion)
+        if (mightSplit && !skipRecursion) //递归计算4个子块
         {
             if (bCtuInfoCheck && m_param->bCTUInfo & 2)
                 qp = int((1 / 0.96) * qp + 0.5);
@@ -1382,7 +1382,7 @@ SplitData Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom&
         {
             if (m_slice->m_sliceType == P_SLICE)
             {
-                if (m_checkMergeAndSkipOnly[0])
+                if (m_checkMergeAndSkipOnly[0])// 仅当(parentCTU.m_skipFlag[list][cuGeom.absPartIdx] == 1 && cuGeom.numPartitions <= 16)为真是，该值为true
                     skipModes = true;
             }
             else
@@ -2723,16 +2723,17 @@ void Analysis::trainCU(const CUData& ctu, const CUGeom& cuGeom, const Mode& best
 }
 
 /* sets md.bestMode if a valid merge candidate is found, else leaves it NULL */
+/* 如果找到一个合法的merge模式，将其保存到md.bestMode中，否则bestMode置空*/
 void Analysis::checkMerge2Nx2N_rd0_4(Mode& skip, Mode& merge, const CUGeom& cuGeom)
 {
     uint32_t depth = cuGeom.depth;
-    ModeDepth& md = m_modeDepth[depth];
+    ModeDepth& md = m_modeDepth[depth]; //md为成员变量
     Yuv *fencYuv = &md.fencYuv;
 
     /* Note that these two Mode instances are named MERGE and SKIP but they may
      * hold the reverse when the function returns. We toggle between the two modes */
     Mode* tempPred = &merge;
-    Mode* bestPred = &skip;
+    Mode* bestPred = &skip;//skip模式的计算, 在后面调用encodeResAndCalcRdSkipCU实现
 
     X265_CHECK(m_slice->m_sliceType != I_SLICE, "Evaluating merge in I slice\n");
 
@@ -2741,15 +2742,15 @@ void Analysis::checkMerge2Nx2N_rd0_4(Mode& skip, Mode& merge, const CUGeom& cuGe
     tempPred->cu.setPredModeSubParts(MODE_INTER);
     tempPred->cu.m_mergeFlag[0] = true;
 
-    bestPred->initCosts();
+    bestPred->initCosts(); //bestPred保存最佳模式
     bestPred->cu.setPartSizeSubParts(SIZE_2Nx2N);
     bestPred->cu.setPredModeSubParts(MODE_INTER);
     bestPred->cu.m_mergeFlag[0] = true;
 
     MVField candMvField[MRG_MAX_NUM_CANDS][2]; // double length for mv of both lists
-    uint8_t candDir[MRG_MAX_NUM_CANDS];
-    uint32_t numMergeCand = tempPred->cu.getInterMergeCandidates(0, 0, candMvField, candDir);
-    PredictionUnit pu(merge.cu, cuGeom, 0);
+    uint8_t candDir[MRG_MAX_NUM_CANDS]; //存储最佳模式
+    uint32_t numMergeCand = tempPred->cu.getInterMergeCandidates(0, 0, candMvField, candDir);//获取merge模式的候选列表及mvp，返回候选模式数
+    PredictionUnit pu(merge.cu, cuGeom, 0); //pu用来存储当前pu的相关信息
 
     bestPred->sa8dCost = MAX_INT64;
     int bestSadCand = -1;
@@ -2760,9 +2761,9 @@ void Analysis::checkMerge2Nx2N_rd0_4(Mode& skip, Mode& merge, const CUGeom& cuGe
         safeX = m_slice->m_refFrameList[0][0]->m_encData->m_pir.pirEndCol * m_param->maxCUSize - 3;
         maxSafeMv = (safeX - tempPred->cu.m_cuPelX) * 4;
     }
-    for (uint32_t i = 0; i < numMergeCand; ++i)
+    for (uint32_t i = 0; i < numMergeCand; ++i)//merge 模式计算
     {
-        if (m_bFrameParallel)
+        if (m_bFrameParallel)//多线程处理，暂不关注
         {
             // Parallel slices bound check
             if (m_param->maxSlices > 1)
@@ -2784,29 +2785,30 @@ void Analysis::checkMerge2Nx2N_rd0_4(Mode& skip, Mode& merge, const CUGeom& cuGe
 
         if (m_param->bIntraRefresh && m_slice->m_sliceType == P_SLICE &&
             tempPred->cu.m_cuPelX / m_param->maxCUSize < m_frame->m_encData->m_pir.pirEndCol &&
-            candMvField[i][0].mv.x > maxSafeMv)
+            candMvField[i][0].mv.x > maxSafeMv) //确保mv位于合法区域内
             // skip merge candidates which reference beyond safe reference area
             continue;
 
-        tempPred->cu.m_mvpIdx[0][0] = (uint8_t)i; // merge candidate ID is stored in L0 MVP idx
+        tempPred->cu.m_mvpIdx[0][0] = (uint8_t)i; //存储mvp的index // merge candidate ID is stored in L0 MVP idx
         X265_CHECK(m_slice->m_sliceType == B_SLICE || !(candDir[i] & 0x10), " invalid merge for P slice\n");
         tempPred->cu.m_interDir[0] = candDir[i];
-        tempPred->cu.m_mv[0][0] = candMvField[i][0].mv;
+        tempPred->cu.m_mv[0][0] = candMvField[i][0].mv;//设置对应ref的mv
         tempPred->cu.m_mv[1][0] = candMvField[i][1].mv;
-        tempPred->cu.m_refIdx[0][0] = (int8_t)candMvField[i][0].refIdx;
+        tempPred->cu.m_refIdx[0][0] = (int8_t)candMvField[i][0].refIdx;//设置对应ref的idx
         tempPred->cu.m_refIdx[1][0] = (int8_t)candMvField[i][1].refIdx;
+		//计算当前PU的预测值，存储在predYUV中
         motionCompensation(tempPred->cu, pu, tempPred->predYuv, true, m_bChromaSa8d && (m_csp != X265_CSP_I400 && m_frame->m_fencPic->m_picCsp != X265_CSP_I400));
 
-        tempPred->sa8dBits = getTUBits(i, numMergeCand);
-        tempPred->distortion = primitives.cu[sizeIdx].sa8d(fencYuv->m_buf[0], fencYuv->m_size, tempPred->predYuv.m_buf[0], tempPred->predYuv.m_size);
-        if (m_bChromaSa8d && (m_csp != X265_CSP_I400 && m_frame->m_fencPic->m_picCsp != X265_CSP_I400))
+        tempPred->sa8dBits = getTUBits(i, numMergeCand); //计算一个简单的TU bits
+        tempPred->distortion = primitives.cu[sizeIdx].sa8d(fencYuv->m_buf[0], fencYuv->m_size, tempPred->predYuv.m_buf[0], tempPred->predYuv.m_size); //sa8d
+        if (m_bChromaSa8d && (m_csp != X265_CSP_I400 && m_frame->m_fencPic->m_picCsp != X265_CSP_I400)) //计算chroma分量
         {
             tempPred->distortion += primitives.chroma[m_csp].cu[sizeIdx].sa8d(fencYuv->m_buf[1], fencYuv->m_csize, tempPred->predYuv.m_buf[1], tempPred->predYuv.m_csize);
             tempPred->distortion += primitives.chroma[m_csp].cu[sizeIdx].sa8d(fencYuv->m_buf[2], fencYuv->m_csize, tempPred->predYuv.m_buf[2], tempPred->predYuv.m_csize);
         }
-        tempPred->sa8dCost = m_rdCost.calcRdSADCost((uint32_t)tempPred->distortion, tempPred->sa8dBits);
+        tempPred->sa8dCost = m_rdCost.calcRdSADCost((uint32_t)tempPred->distortion, tempPred->sa8dBits);//sa8dCost
 
-        if (tempPred->sa8dCost < bestPred->sa8dCost)
+        if (tempPred->sa8dCost < bestPred->sa8dCost) //保存最佳模式
         {
             bestSadCand = i;
             std::swap(tempPred, bestPred);
@@ -2814,32 +2816,32 @@ void Analysis::checkMerge2Nx2N_rd0_4(Mode& skip, Mode& merge, const CUGeom& cuGe
     }
 
     /* force mode decision to take inter or intra */
-    if (bestSadCand < 0)
+    if (bestSadCand < 0)//没看懂，强制md采用inter或intra???
         return;
 
-    /* calculate the motion compensation for chroma for the best mode selected */
+    /* calculate the motion compensation for chroma for the best mode selected */ 
     if ((!m_bChromaSa8d && (m_csp != X265_CSP_I400)) || (m_frame->m_fencPic->m_picCsp == X265_CSP_I400 && m_csp != X265_CSP_I400)) /* Chroma MC was done above */
-        motionCompensation(bestPred->cu, pu, bestPred->predYuv, false, true);
+        motionCompensation(bestPred->cu, pu, bestPred->predYuv, false, true);//计算chroma的predYUV，前面已经计算过，注意判决条件中的m_bChromaSa8d
 
-    if (m_param->rdLevel)
+    if (m_param->rdLevel) //rdLevel>0时，需要对最佳模式计算一次rdcost
     {
-        if (m_param->bLossless)
+        if (m_param->bLossless) //是否使用无失真编码
             bestPred->rdCost = MAX_INT64;
         else
-            encodeResAndCalcRdSkipCU(*bestPred);
+            encodeResAndCalcRdSkipCU(*bestPred);//用merge中的最佳mode，计算skip模式； skip模式没有残差编码，计算结果存储在bestPred中；不会改变sa8d的值，因此后续可以使用该值
 
         /* Encode with residual */
-        tempPred->cu.m_mvpIdx[0][0] = (uint8_t)bestSadCand;
+        tempPred->cu.m_mvpIdx[0][0] = (uint8_t)bestSadCand;//有残差编码，对应数据赋值
         tempPred->cu.setPUInterDir(candDir[bestSadCand], 0, 0);
         tempPred->cu.setPUMv(0, candMvField[bestSadCand][0].mv, 0, 0);
         tempPred->cu.setPUMv(1, candMvField[bestSadCand][1].mv, 0, 0);
         tempPred->cu.setPURefIdx(0, (int8_t)candMvField[bestSadCand][0].refIdx, 0, 0);
         tempPred->cu.setPURefIdx(1, (int8_t)candMvField[bestSadCand][1].refIdx, 0, 0);
-        tempPred->sa8dCost = bestPred->sa8dCost;
+        tempPred->sa8dCost = bestPred->sa8dCost;//sa8d的值未被overwrite, 可以使用
         tempPred->sa8dBits = bestPred->sa8dBits;
         tempPred->predYuv.copyFromYuv(bestPred->predYuv);
 
-        encodeResAndCalcRdInterCU(*tempPred, cuGeom);
+        encodeResAndCalcRdInterCU(*tempPred, cuGeom); //full rdcost 计算
 
         md.bestMode = tempPred->rdCost < bestPred->rdCost ? tempPred : bestPred;
     }
